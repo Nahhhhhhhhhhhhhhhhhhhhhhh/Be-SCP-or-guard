@@ -9,41 +9,45 @@ getgenv().Aimbot = false
 getgenv().AimbotTeamCheck = false
 getgenv().ShowFOV = false
 getgenv().AimbotFOV = 150
-getgenv().Noclip = false
+getgenv().TargetPart = "Head" 
+getgenv().MaxDistance = 500 
 
 local ESP_Config = {
     Enabled = false,
     ShowGuards = true,
     ShowSCPs = true,
+    ShowClassD = true
 }
 
--- FOV Circle (Hollow by default in Drawing lib)
+-- FOV Circle
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.Color = Color3.fromRGB(0, 255, 255)
-FOVCircle.Transparency = 1
-FOVCircle.Filled = false -- Ensures it is a hollow circle
+FOVCircle.Thickness = 1.5
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Transparency = 0.8
+FOVCircle.Filled = false
 
--- TARGETING LOGIC
-local function GetClosestToMouse()
+-- TARGETING ENGINE
+local function GetClosestTarget()
     local Target = nil
-    local MaxDist = getgenv().AimbotFOV
+    local MaxDistFOV = getgenv().AimbotFOV
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    local MyPos = LocalPlayer.Character.HumanoidRootPart.Position
+
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
-            
-            -- Team Check Logic
-            if getgenv().AimbotTeamCheck and v.Team == LocalPlayer.Team then 
-                continue 
-            end
+            if getgenv().AimbotTeamCheck and v.Team == LocalPlayer.Team then continue end
 
-            local Part = v.Character:FindFirstChild("Head")
+            local Part = v.Character:FindFirstChild(getgenv().TargetPart)
             if Part then
-                local Pos, OnScreen = Camera:WorldToViewportPoint(Part.Position)
-                if OnScreen then
-                    local Dist = (Vector2.new(Pos.X, Pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                    if Dist < MaxDist then
-                        Target = v
-                        MaxDist = Dist
+                local WorldDist = (Part.Position - MyPos).Magnitude
+                if WorldDist <= getgenv().MaxDistance then
+                    local Pos, OnScreen = Camera:WorldToViewportPoint(Part.Position)
+                    if OnScreen then
+                        local ScreenDist = (Vector2.new(Pos.X, Pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+                        if ScreenDist < MaxDistFOV then
+                            Target = v
+                            MaxDistFOV = ScreenDist
+                        end
                     end
                 end
             end
@@ -52,84 +56,98 @@ local function GetClosestToMouse()
     return Target
 end
 
--- MAIN RUNTIME loop
+-- RUNTIME
 RunService.RenderStepped:Connect(function()
-    -- Update FOV Circle
     FOVCircle.Visible = getgenv().ShowFOV
     FOVCircle.Radius = getgenv().AimbotFOV
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 
-    -- Aimbot Logic
     if getgenv().Aimbot then
-        local Target = GetClosestToMouse()
-        if Target and Target.Character and Target.Character:FindFirstChild("Head") then
-            local AimPart = Target.Character.Head
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, AimPart.Position), 0.15)
+        local Target = GetClosestTarget()
+        if Target and Target.Character and Target.Character:FindFirstChild(getgenv().TargetPart) then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Character[getgenv().TargetPart].Position)
         end
     end
 
-    -- ESP Refresh Logic
+    -- ESP Refresh
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             local highlight = p.Character:FindFirstChild("ESP_Highlight")
+            local teamName = p.Team and p.Team.Name or "None"
             
-            local isGuard = p.Team and (p.Team.Name == "Guard" or p.Team.Name == "Security")
-            local isSCP = p.Team and p.Team.Name == "SCP"
-
             local shouldShow = false
             if ESP_Config.Enabled then
-                if isGuard and ESP_Config.ShowGuards then shouldShow = true end
-                if isSCP and ESP_Config.ShowSCPs then shouldShow = true end
-                -- Fallback for other teams if ESP is on
-                if not isGuard and not isSCP then shouldShow = true end
+                if (teamName == "Guard" or teamName == "Security") and ESP_Config.ShowGuards then shouldShow = true
+                elseif teamName == "SCP" and ESP_Config.ShowSCPs then shouldShow = true
+                elseif (teamName == "Class-D" or teamName == "Prisoner") and ESP_Config.ShowClassD then shouldShow = true
+                elseif not ESP_Config.ShowGuards and not ESP_Config.ShowSCPs and not ESP_Config.ShowClassD then shouldShow = true end
             end
 
             if shouldShow then
                 if not highlight then
-                    highlight = Instance.new("Highlight")
+                    highlight = Instance.new("Highlight", p.Character)
                     highlight.Name = "ESP_Highlight"
-                    highlight.Parent = p.Character
-                    highlight.FillTransparency = 0.5
-                    highlight.OutlineTransparency = 0
                 end
                 highlight.Enabled = true
                 highlight.FillColor = p.TeamColor.Color
-            else
-                if highlight then highlight.Enabled = false end
+            elseif highlight then
+                highlight.Enabled = false
             end
-        end
-    end
-    
-    -- Noclip
-    if getgenv().Noclip and LocalPlayer.Character then
-        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide = false end
         end
     end
 end)
 
--- UI SETUP
+-- UI WINDOW
 local Window = Rayfield:CreateWindow({
-    Name = "Zenhub | SCP Evolution",
-    LoadingTitle = "Initializing...",
+    Name = "Zenhub | SCP",
+    LoadingTitle = "Interface Loading...",
     ConfigurationSaving = { Enabled = false }
 })
 
+-- COMBAT TAB
 local CombatTab = Window:CreateTab("Combat")
-CombatTab:CreateToggle({Name = "Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
-CombatTab:CreateToggle({Name = "Team Check (Don't hit allies)", CurrentValue = false, Callback = function(v) getgenv().AimbotTeamCheck = v end})
+
+CombatTab:CreateSection("Main Lock")
+CombatTab:CreateToggle({Name = "Enable Instant Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
+CombatTab:CreateToggle({Name = "Team Check", CurrentValue = false, Callback = function(v) getgenv().AimbotTeamCheck = v end})
+
+CombatTab:CreateSection("Target Settings")
+CombatTab:CreateDropdown({
+    Name = "Target Bone",
+    Options = {"Head", "HumanoidRootPart"},
+    CurrentOption = {"Head"},
+    Callback = function(Option) getgenv().TargetPart = Option[1] end,
+})
+
+CombatTab:CreateSlider({
+    Name = "Max Distance (Studs)",
+    Range = {50, 2500},
+    Increment = 50,
+    CurrentValue = 500,
+    Callback = function(v) getgenv().MaxDistance = v end
+})
+
+CombatTab:CreateSection("Visual Aids")
 CombatTab:CreateToggle({Name = "Show FOV Circle", CurrentValue = false, Callback = function(v) getgenv().ShowFOV = v end})
-CombatTab:CreateSlider({Name = "FOV Radius", Range = {50, 800}, Increment = 10, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
+CombatTab:CreateSlider({Name = "FOV Size", Range = {30, 600}, Increment = 5, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
 
+-- VISUALS TAB
 local VisualsTab = Window:CreateTab("Visuals")
-VisualsTab:CreateToggle({Name = "Master ESP Switch", CurrentValue = false, Callback = function(v) ESP_Config.Enabled = v end})
-VisualsTab:CreateToggle({Name = "Show Guards", CurrentValue = true, Callback = function(v) ESP_Config.ShowGuards = v end})
-VisualsTab:CreateToggle({Name = "Show SCPs", CurrentValue = true, Callback = function(v) ESP_Config.ShowSCPs = v end})
 
+VisualsTab:CreateSection("Global ESP")
+VisualsTab:CreateToggle({Name = "Master ESP Switch", CurrentValue = false, Callback = function(v) ESP_Config.Enabled = v end})
+
+VisualsTab:CreateSection("Team Filters")
+VisualsTab:CreateToggle({Name = "Highlight Guards", CurrentValue = true, Callback = function(v) ESP_Config.ShowGuards = v end})
+VisualsTab:CreateToggle({Name = "Highlight SCPs", CurrentValue = true, Callback = function(v) ESP_Config.ShowSCPs = v end})
+VisualsTab:CreateToggle({Name = "Highlight Class-D", CurrentValue = true, Callback = function(v) ESP_Config.ShowClassD = v end})
+
+-- MOVEMENT TAB
 local MovementTab = Window:CreateTab("Movement")
-MovementTab:CreateSlider({Name = "WalkSpeed", Range = {16, 100}, Increment = 1, CurrentValue = 16, Callback = function(v)
+MovementTab:CreateSection("Character Tweaks")
+MovementTab:CreateSlider({Name = "Speed Multiplier", Range = {16, 150}, Increment = 1, CurrentValue = 16, Callback = function(v)
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = v
     end
 end})
-MovementTab:CreateToggle({Name = "No-Clip", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
+MovementTab:CreateToggle({Name = "Enable No-Clip", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
