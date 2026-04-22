@@ -1,9 +1,16 @@
--- Use the direct GitHub source for better reliability
-local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
+-- FIX: Using a check to ensure HttpGet works properly
+local Success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
+end)
+
+if not Success or not Rayfield then
+    warn("Rayfield failed to load. Check your internet or executor.")
+    return
+end
 
 local Window = Rayfield:CreateWindow({
-   Name = "Zenos Hub| SCP Absolute Hub",
-   LoadingTitle = "Be an Scp Or Guard Loading...",
+   Name = "Zen Hub | SCP Absolute Hub",
+   LoadingTitle = "Securing Facility Access...",
    LoadingSubtitle = "by Zeno",
    ConfigurationSaving = {
       Enabled = true,
@@ -12,15 +19,11 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
--- Services & Character Checks
+-- Services
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
-
--- Ensure Character exists before continuing
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
 
 -- State Variables
 getgenv().Aimbot = false
@@ -40,7 +43,6 @@ local ESP_Config = {
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-FOVCircle.Filled = false
 FOVCircle.Transparency = 0.7
 
 -- Optimized Target Finder
@@ -62,7 +64,7 @@ local function GetClosestToMouse()
     return Target
 end
 
--- ESP Logic (Wrapped in pcall to prevent crashes)
+-- ESP Function
 local function ApplyESP(player)
     if player == LocalPlayer then return end
     local function setupESPOnChar(char)
@@ -85,15 +87,14 @@ local function ApplyESP(player)
                     bgui.Size = UDim2.new(0, 100, 0, 50)
                     bgui.StudsOffset = Vector3.new(0, 2.5, 0)
                     bgui.AlwaysOnTop = true
-
                     local label = Instance.new("TextLabel", bgui)
                     label.BackgroundTransparency = 1
                     label.Size = UDim2.new(1, 0, 1, 0)
                     label.Text = player.DisplayName or player.Name
                     label.TextColor3 = Color3.new(1, 1, 1)
-                    label.TextStrokeTransparency = 0
-                    label.Font = Enum.Font.SourceSansBold
                     label.TextSize = ESP_Config.NameScale
+                    label.Font = Enum.Font.SourceSansBold
+                    label.TextStrokeTransparency = 0
                 end
             end
         end)
@@ -102,7 +103,7 @@ local function ApplyESP(player)
     if player.Character then setupESPOnChar(player.Character) end
 end
 
--- Metatable Hook (Silent Aim)
+-- Metatable Hook
 local mt = getrawmetatable(game)
 local old = mt.__index
 setreadonly(mt, false)
@@ -115,7 +116,7 @@ mt.__index = newcclosure(function(t, k)
 end)
 setreadonly(mt, true)
 
--- Main Runtime Loop
+-- Runtime
 RunService.RenderStepped:Connect(function()
     FOVCircle.Visible = getgenv().ShowFOV
     FOVCircle.Radius = getgenv().AimbotFOV
@@ -135,23 +136,22 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- UI TABS
-local CombatTab = Window:CreateTab("Combat", 4483362458)
+-- TABS
+local CombatTab = Window:CreateTab("Combat")
 CombatTab:CreateToggle({Name = "Aimbot", CurrentValue = false, Flag = "Aim", Callback = function(v) getgenv().Aimbot = v end})
 CombatTab:CreateToggle({Name = "Silent Aim", CurrentValue = false, Flag = "SAim", Callback = function(v) getgenv().SilentAim = v end})
 CombatTab:CreateToggle({Name = "Show FOV", CurrentValue = false, Flag = "SFOV", Callback = function(v) getgenv().ShowFOV = v end})
-CombatTab:CreateSlider({Name = "FOV Size", Range = {50, 800}, Increment = 10, CurrentValue = 150, Flag = "FOVR", Callback = function(v) getgenv().AimbotFOV = v end})
 
-local VisualsTab = Window:CreateTab("Visuals", 4483362458)
-VisualsTab:CreateToggle({Name = "ESP Enabled", CurrentValue = false, Flag = "EESP", Callback = function(v) ESP_Config.Enabled = v for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end end})
-VisualsTab:CreateToggle({Name = "Show Names", CurrentValue = false, Flag = "EName", Callback = function(v) ESP_Config.ShowNames = v for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end end})
+local VisualsTab = Window:CreateTab("Visuals")
+VisualsTab:CreateToggle({Name = "ESP", CurrentValue = false, Flag = "EESP", Callback = function(v) ESP_Config.Enabled = v for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end end})
+VisualsTab:CreateToggle({Name = "Names", CurrentValue = false, Flag = "EName", Callback = function(v) ESP_Config.ShowNames = v for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end end})
 
-local MovementTab = Window:CreateTab("Movement", 4483362458)
-MovementTab:CreateSlider({Name = "WalkSpeed", Range = {16, 250}, Increment = 1, CurrentValue = 16, Flag = "WS", Callback = function(v) 
+local MovementTab = Window:CreateTab("Movement")
+MovementTab:CreateSlider({Name = "WalkSpeed", Range = {16, 200}, Increment = 1, CurrentValue = 16, Flag = "WS", Callback = function(v) 
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = v 
     end
 end})
 MovementTab:CreateToggle({Name = "No-Clip", CurrentValue = false, Flag = "NC", Callback = function(v) getgenv().Noclip = v end})
 
-Rayfield:Notify({Title = "Loaded", Content = "Script is active!", Duration = 5})
+Rayfield:LoadConfiguration()
