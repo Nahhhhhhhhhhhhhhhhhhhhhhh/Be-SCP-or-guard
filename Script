@@ -1,5 +1,6 @@
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
@@ -11,31 +12,39 @@ getgenv().ShowFOV = false
 getgenv().AimbotFOV = 150
 getgenv().TargetPart = "Head" 
 getgenv().MaxDistance = 500 
+getgenv().SpecificSCPTarget = "All"
+getgenv().SpecificTeamTarget = "All"
+getgenv().ManualOverride = true -- The "Swipe to Deactivate" logic
 
-local ESP_Config = {
-    Enabled = false,
-    ShowGuards = true,
-    ShowSCPs = true,
-    ShowClassD = true
-}
+local IsSwiping = false
 
--- FOV Circle
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1.5
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-FOVCircle.Transparency = 0.8
-FOVCircle.Filled = false
+-- DETECT MANUAL CAMERA MOVEMENT
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Gamepad2 then
+        IsSwiping = true
+        task.delay(0.1, function() IsSwiping = false end) -- Short delay before re-locking
+    end
+end)
 
 -- TARGETING ENGINE
 local function GetClosestTarget()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    if getgenv().ManualOverride and IsSwiping then return nil end -- Stop aimbot if user is swiping
+
     local Target = nil
     local MaxDistFOV = getgenv().AimbotFOV
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
     local MyPos = LocalPlayer.Character.HumanoidRootPart.Position
 
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
-            if getgenv().AimbotTeamCheck and v.Team == LocalPlayer.Team then continue end
+            
+            -- Team Dropdown Filter
+            if getgenv().SpecificTeamTarget ~= "All" and v.Team and v.Team.Name ~= getgenv().SpecificTeamTarget then continue end
+            
+            -- SCP Dropdown Filter
+            if v.Team and v.Team.Name == "SCP" and getgenv().SpecificSCPTarget ~= "All" then
+                if v.Character.Name ~= getgenv().SpecificSCPTarget then continue end
+            end
 
             local Part = v.Character:FindFirstChild(getgenv().TargetPart)
             if Part then
@@ -58,60 +67,48 @@ end
 
 -- RUNTIME
 RunService.RenderStepped:Connect(function()
-    FOVCircle.Visible = getgenv().ShowFOV
-    FOVCircle.Radius = getgenv().AimbotFOV
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-
     if getgenv().Aimbot then
         local Target = GetClosestTarget()
         if Target and Target.Character and Target.Character:FindFirstChild(getgenv().TargetPart) then
             Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Character[getgenv().TargetPart].Position)
         end
     end
-
-    -- ESP Refresh
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local highlight = p.Character:FindFirstChild("ESP_Highlight")
-            local teamName = p.Team and p.Team.Name or "None"
-            
-            local shouldShow = false
-            if ESP_Config.Enabled then
-                if (teamName == "Guard" or teamName == "Security") and ESP_Config.ShowGuards then shouldShow = true
-                elseif teamName == "SCP" and ESP_Config.ShowSCPs then shouldShow = true
-                elseif (teamName == "Class-D" or teamName == "Prisoner") and ESP_Config.ShowClassD then shouldShow = true
-                elseif not ESP_Config.ShowGuards and not ESP_Config.ShowSCPs and not ESP_Config.ShowClassD then shouldShow = true end
-            end
-
-            if shouldShow then
-                if not highlight then
-                    highlight = Instance.new("Highlight", p.Character)
-                    highlight.Name = "ESP_Highlight"
-                end
-                highlight.Enabled = true
-                highlight.FillColor = p.TeamColor.Color
-            elseif highlight then
-                highlight.Enabled = false
-            end
-        end
-    end
 end)
 
 -- UI WINDOW
 local Window = Rayfield:CreateWindow({
-    Name = "Zenhub | SCP",
-    LoadingTitle = "Interface Loading...",
+    Name = "Zenhub Premium | Swipe Edition",
+    LoadingTitle = "Loading Assets...",
     ConfigurationSaving = { Enabled = false }
 })
 
--- COMBAT TAB
 local CombatTab = Window:CreateTab("Combat")
 
-CombatTab:CreateSection("Main Lock")
-CombatTab:CreateToggle({Name = "Enable Instant Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
-CombatTab:CreateToggle({Name = "Team Check", CurrentValue = false, Callback = function(v) getgenv().AimbotTeamCheck = v end})
+CombatTab:CreateSection("Camera Logic")
+CombatTab:CreateToggle({
+    Name = "Swipe to Deactivate", 
+    CurrentValue = true, 
+    Info = "Aimbot stops while you are manually moving the camera.",
+    Callback = function(v) getgenv().ManualOverride = v end
+})
+CombatTab:CreateToggle({Name = "Enable Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
 
-CombatTab:CreateSection("Target Settings")
+CombatTab:CreateSection("Target Filtering")
+CombatTab:CreateDropdown({
+    Name = "Target Specific Team",
+    Options = {"All", "Guard", "SCP", "Class-D", "Chaos Insurgency"},
+    CurrentOption = {"All"},
+    Callback = function(Option) getgenv().SpecificTeamTarget = Option[1] end,
+})
+
+CombatTab:CreateDropdown({
+    Name = "Target Specific SCP",
+    Options = {"All", "SCP-173", "SCP-096", "SCP-049", "SCP-106", "SCP-939", "SCP-035"},
+    CurrentOption = {"All"},
+    Callback = function(Option) getgenv().SpecificSCPTarget = Option[1] end,
+})
+
+CombatTab:CreateSection("Adjustments")
 CombatTab:CreateDropdown({
     Name = "Target Bone",
     Options = {"Head", "HumanoidRootPart"},
@@ -120,34 +117,13 @@ CombatTab:CreateDropdown({
 })
 
 CombatTab:CreateSlider({
-    Name = "Max Distance (Studs)",
-    Range = {50, 2500},
+    Name = "Lock Distance",
+    Range = {50, 2000},
     Increment = 50,
     CurrentValue = 500,
     Callback = function(v) getgenv().MaxDistance = v end
 })
 
-CombatTab:CreateSection("Visual Aids")
-CombatTab:CreateToggle({Name = "Show FOV Circle", CurrentValue = false, Callback = function(v) getgenv().ShowFOV = v end})
-CombatTab:CreateSlider({Name = "FOV Size", Range = {30, 600}, Increment = 5, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
-
--- VISUALS TAB
 local VisualsTab = Window:CreateTab("Visuals")
-
-VisualsTab:CreateSection("Global ESP")
-VisualsTab:CreateToggle({Name = "Master ESP Switch", CurrentValue = false, Callback = function(v) ESP_Config.Enabled = v end})
-
-VisualsTab:CreateSection("Team Filters")
-VisualsTab:CreateToggle({Name = "Highlight Guards", CurrentValue = true, Callback = function(v) ESP_Config.ShowGuards = v end})
-VisualsTab:CreateToggle({Name = "Highlight SCPs", CurrentValue = true, Callback = function(v) ESP_Config.ShowSCPs = v end})
-VisualsTab:CreateToggle({Name = "Highlight Class-D", CurrentValue = true, Callback = function(v) ESP_Config.ShowClassD = v end})
-
--- MOVEMENT TAB
-local MovementTab = Window:CreateTab("Movement")
-MovementTab:CreateSection("Character Tweaks")
-MovementTab:CreateSlider({Name = "Speed Multiplier", Range = {16, 150}, Increment = 1, CurrentValue = 16, Callback = function(v)
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = v
-    end
-end})
-MovementTab:CreateToggle({Name = "Enable No-Clip", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
+VisualsTab:CreateSection("ESP")
+VisualsTab:CreateToggle({Name = "Master ESP", CurrentValue = false, Callback = function(v) ESP_Config.Enabled = v end})
