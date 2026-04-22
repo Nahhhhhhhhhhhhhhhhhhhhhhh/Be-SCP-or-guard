@@ -1,16 +1,12 @@
--- FIX: Using a check to ensure HttpGet works properly
-local Success, Rayfield = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
-end)
+-- Step 1: Secure the source code into a variable first
+local RayfieldSource = game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua")
 
-if not Success or not Rayfield then
-    warn("Rayfield failed to load. Check your internet or executor.")
-    return
-end
+-- Step 2: Load the library from that variable
+local Rayfield = loadstring(RayfieldSource)()
 
 local Window = Rayfield:CreateWindow({
    Name = "Zen Hub | SCP Absolute Hub",
-   LoadingTitle = "Securing Facility Access...",
+   LoadingTitle = "Zen Hub Loading...",
    LoadingSubtitle = "by Zeno",
    ConfigurationSaving = {
       Enabled = true,
@@ -25,7 +21,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 
--- State Variables
+-- Configuration
 getgenv().Aimbot = false
 getgenv().SilentAim = false
 getgenv().AimbotFOV = 150
@@ -39,13 +35,13 @@ local ESP_Config = {
     HighlightTransparency = 0.5
 }
 
--- FOV Circle
+-- FOV Circle Visual
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 FOVCircle.Transparency = 0.7
 
--- Optimized Target Finder
+-- Target Logic
 local function GetClosestToMouse()
     local Target = nil
     local MaxDist = getgenv().AimbotFOV
@@ -64,25 +60,23 @@ local function GetClosestToMouse()
     return Target
 end
 
--- ESP Function
+-- ESP System
 local function ApplyESP(player)
     if player == LocalPlayer then return end
     local function setupESPOnChar(char)
         if not char then return end
         pcall(function()
-            local head = char:WaitForChild("Head", 5)
             if char:FindFirstChild("ESPHighlight") then char.ESPHighlight:Destroy() end
-            if head and head:FindFirstChild("ESPNameTag") then head.ESPNameTag:Destroy() end
+            if char:FindFirstChild("Head") and char.Head:FindFirstChild("ESPNameTag") then char.Head.ESPNameTag:Destroy() end
 
             if ESP_Config.Enabled then
-                local highlight = Instance.new("Highlight")
+                local highlight = Instance.new("Highlight", char)
                 highlight.Name = "ESPHighlight"
-                highlight.Parent = char
                 highlight.FillTransparency = ESP_Config.HighlightTransparency
                 if player.Team then highlight.FillColor = player.TeamColor.Color end
 
-                if ESP_Config.ShowNames and head then
-                    local bgui = Instance.new("BillboardGui", head)
+                if ESP_Config.ShowNames and char:FindFirstChild("Head") then
+                    local bgui = Instance.new("BillboardGui", char.Head)
                     bgui.Name = "ESPNameTag"
                     bgui.Size = UDim2.new(0, 100, 0, 50)
                     bgui.StudsOffset = Vector3.new(0, 2.5, 0)
@@ -103,7 +97,7 @@ local function ApplyESP(player)
     if player.Character then setupESPOnChar(player.Character) end
 end
 
--- Metatable Hook
+-- Silent Aim Hook
 local mt = getrawmetatable(game)
 local old = mt.__index
 setreadonly(mt, false)
@@ -116,7 +110,7 @@ mt.__index = newcclosure(function(t, k)
 end)
 setreadonly(mt, true)
 
--- Runtime
+-- Main Loop
 RunService.RenderStepped:Connect(function()
     FOVCircle.Visible = getgenv().ShowFOV
     FOVCircle.Radius = getgenv().AimbotFOV
