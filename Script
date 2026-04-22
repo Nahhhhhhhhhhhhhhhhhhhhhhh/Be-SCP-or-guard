@@ -113,8 +113,8 @@ end)
 -- UI WINDOW
 -- =========================
 local Window = Rayfield:CreateWindow({
-    Name = "Zenhub Ultra | V14.0 Tactical",
-    LoadingTitle = "Syncing Tactical Metadata...",
+    Name = "Zenhub Ultra | Be An Scp Or Guard",
+    LoadingTitle = "Loading data...",
 })
 
 -- COMBAT
