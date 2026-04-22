@@ -1,45 +1,16 @@
--- STEP 1: Define the URL clearly
-local RayfieldURL = "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"
-
--- STEP 2: Fetch the code (Using a protected call to stop crashes)
-local Success, SourceCode = pcall(function()
-    return game:HttpGet(RayfieldURL)
-end)
-
-if not Success or SourceCode == nil then
-    warn("ERROR: Could not reach the UI Library. Check your Wi-Fi!")
-    return
-end
-
--- STEP 3: Wait a moment for the script to 'settle' in memory
-task.wait(0.5)
-
--- STEP 4: Load the library
-local Rayfield = loadstring(SourceCode)()
-
--- STEP 5: Build the Window
-local Window = Rayfield:CreateWindow({
-   Name = "Site-Logistics | SCP Absolute Hub",
-   LoadingTitle = "Bypassing Security...",
-   LoadingSubtitle = "Mobile Protocol - Gemini",
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = "SCP_Guard_Config",
-      FileName = "Main"
-   }
-})
-
--- SERVICES
+-- =========================
+-- INITIALIZATION & VARIABLES
+-- =========================
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 
--- CONFIG
 getgenv().Aimbot = false
 getgenv().SilentAim = false
-getgenv().AimbotFOV = 150
 getgenv().ShowFOV = false
+getgenv().AimbotFOV = 150
 getgenv().Noclip = false
 
 local ESP_Config = {
@@ -49,13 +20,16 @@ local ESP_Config = {
     HighlightTransparency = 0.5
 }
 
--- FOV CIRCLE
+-- FOV Circle Visual
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 FOVCircle.Transparency = 0.7
 
--- TARGETING LOGIC
+-- =========================
+-- CORE LOGIC FUNCTIONS
+-- =========================
+
 local function GetClosestToMouse()
     local Target = nil
     local MaxDist = getgenv().AimbotFOV
@@ -74,7 +48,6 @@ local function GetClosestToMouse()
     return Target
 end
 
--- ESP SYSTEM
 local function ApplyESP(player)
     if player == LocalPlayer then return end
     local function setupESPOnChar(char)
@@ -111,7 +84,7 @@ local function ApplyESP(player)
     if player.Character then setupESPOnChar(player.Character) end
 end
 
--- METATABLE (SILENT AIM)
+-- Metatable Hook for Silent Aim
 local mt = getrawmetatable(game)
 local old = mt.__index
 setreadonly(mt, false)
@@ -124,7 +97,7 @@ mt.__index = newcclosure(function(t, k)
 end)
 setreadonly(mt, true)
 
--- UPDATER LOOP
+-- Main Runtime Loop
 RunService.RenderStepped:Connect(function()
     FOVCircle.Visible = getgenv().ShowFOV
     FOVCircle.Radius = getgenv().AimbotFOV
@@ -144,22 +117,95 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- TABS
-local CombatTab = Window:CreateTab("Combat")
-CombatTab:CreateToggle({Name = "Aimbot", CurrentValue = false, Flag = "Aim", Callback = function(v) getgenv().Aimbot = v end})
-CombatTab:CreateToggle({Name = "Silent Aim", CurrentValue = false, Flag = "SAim", Callback = function(v) getgenv().SilentAim = v end})
-CombatTab:CreateToggle({Name = "Show FOV", CurrentValue = false, Flag = "SFOV", Callback = function(v) getgenv().ShowFOV = v end})
+-- =========================
+-- CREATE WINDOW
+-- =========================
+local Window = Rayfield:CreateWindow({
+    Name = "Zen Hub | SCP Absolute Hub",
+    LoadingTitle = "Loading UI...",
+    LoadingSubtitle = "Please wait",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "SCP_Config",
+        FileName = "Main"
+    }
+})
 
-local VisualsTab = Window:CreateTab("Visuals")
-VisualsTab:CreateToggle({Name = "ESP", CurrentValue = false, Flag = "EESP", Callback = function(v) ESP_Config.Enabled = v for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end end})
-VisualsTab:CreateToggle({Name = "Names", CurrentValue = false, Flag = "EName", Callback = function(v) ESP_Config.ShowNames = v for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end end})
+-- =========================
+-- TABS & CALLBACKS
+-- =========================
 
-local MovementTab = Window:CreateTab("Movement")
-MovementTab:CreateSlider({Name = "WalkSpeed", Range = {16, 200}, Increment = 1, CurrentValue = 16, Flag = "WS", Callback = function(v) 
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = v 
+-- COMBAT TAB
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+
+CombatTab:CreateToggle({
+    Name = "Aimbot",
+    CurrentValue = false,
+    Callback = function(v) getgenv().Aimbot = v end
+})
+
+CombatTab:CreateToggle({
+    Name = "Silent Aim",
+    CurrentValue = false,
+    Callback = function(v) getgenv().SilentAim = v end
+})
+
+CombatTab:CreateToggle({
+    Name = "Show FOV",
+    CurrentValue = false,
+    Callback = function(v) getgenv().ShowFOV = v end
+})
+
+-- VISUALS TAB
+local VisualsTab = Window:CreateTab("Visuals", 4483362458)
+
+VisualsTab:CreateToggle({
+    Name = "ESP",
+    CurrentValue = false,
+    Callback = function(v) 
+        ESP_Config.Enabled = v 
+        for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end 
     end
-end})
-MovementTab:CreateToggle({Name = "No-Clip", CurrentValue = false, Flag = "NC", Callback = function(v) getgenv().Noclip = v end})
+})
+
+VisualsTab:CreateToggle({
+    Name = "Names",
+    CurrentValue = false,
+    Callback = function(v) 
+        ESP_Config.ShowNames = v 
+        for _,p in pairs(Players:GetPlayers()) do ApplyESP(p) end 
+    end
+})
+
+-- MOVEMENT TAB
+local MovementTab = Window:CreateTab("Movement", 4483362458)
+
+MovementTab:CreateSlider({
+    Name = "WalkSpeed",
+    Range = {16, 200},
+    Increment = 1,
+    CurrentValue = 16,
+    Callback = function(v)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = v
+        end
+    end
+})
+
+MovementTab:CreateToggle({
+    Name = "No-Clip",
+    CurrentValue = false,
+    Callback = function(v) getgenv().Noclip = v end
+})
+
+-- INITIALIZE
+for _, p in pairs(Players:GetPlayers()) do ApplyESP(p) end
+Players.PlayerAdded:Connect(ApplyESP)
+
+Rayfield:Notify({
+    Title = "Success",
+    Content = "UI Loaded with Full Scripting",
+    Duration = 3
+})
 
 Rayfield:LoadConfiguration()
