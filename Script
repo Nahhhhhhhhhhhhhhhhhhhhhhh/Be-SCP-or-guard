@@ -1,13 +1,27 @@
--- Step 1: Secure the source code into a variable first
-local RayfieldSource = game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua")
+-- STEP 1: Define the URL clearly
+local RayfieldURL = "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"
 
--- Step 2: Load the library from that variable
-local Rayfield = loadstring(RayfieldSource)()
+-- STEP 2: Fetch the code (Using a protected call to stop crashes)
+local Success, SourceCode = pcall(function()
+    return game:HttpGet(RayfieldURL)
+end)
 
+if not Success or SourceCode == nil then
+    warn("ERROR: Could not reach the UI Library. Check your Wi-Fi!")
+    return
+end
+
+-- STEP 3: Wait a moment for the script to 'settle' in memory
+task.wait(0.5)
+
+-- STEP 4: Load the library
+local Rayfield = loadstring(SourceCode)()
+
+-- STEP 5: Build the Window
 local Window = Rayfield:CreateWindow({
-   Name = "Zen Hub | SCP Absolute Hub",
-   LoadingTitle = "Zen Hub Loading...",
-   LoadingSubtitle = "by Zeno",
+   Name = "Site-Logistics | SCP Absolute Hub",
+   LoadingTitle = "Bypassing Security...",
+   LoadingSubtitle = "Mobile Protocol - Gemini",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP_Guard_Config",
@@ -15,13 +29,13 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
--- Services
+-- SERVICES
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 
--- Configuration
+-- CONFIG
 getgenv().Aimbot = false
 getgenv().SilentAim = false
 getgenv().AimbotFOV = 150
@@ -35,13 +49,13 @@ local ESP_Config = {
     HighlightTransparency = 0.5
 }
 
--- FOV Circle Visual
+-- FOV CIRCLE
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 FOVCircle.Transparency = 0.7
 
--- Target Logic
+-- TARGETING LOGIC
 local function GetClosestToMouse()
     local Target = nil
     local MaxDist = getgenv().AimbotFOV
@@ -60,7 +74,7 @@ local function GetClosestToMouse()
     return Target
 end
 
--- ESP System
+-- ESP SYSTEM
 local function ApplyESP(player)
     if player == LocalPlayer then return end
     local function setupESPOnChar(char)
@@ -97,7 +111,7 @@ local function ApplyESP(player)
     if player.Character then setupESPOnChar(player.Character) end
 end
 
--- Silent Aim Hook
+-- METATABLE (SILENT AIM)
 local mt = getrawmetatable(game)
 local old = mt.__index
 setreadonly(mt, false)
@@ -110,7 +124,7 @@ mt.__index = newcclosure(function(t, k)
 end)
 setreadonly(mt, true)
 
--- Main Loop
+-- UPDATER LOOP
 RunService.RenderStepped:Connect(function()
     FOVCircle.Visible = getgenv().ShowFOV
     FOVCircle.Radius = getgenv().AimbotFOV
@@ -119,7 +133,7 @@ RunService.RenderStepped:Connect(function()
     if getgenv().Aimbot then
         local Target = GetClosestToMouse()
         if Target and Target.Character and Target.Character:FindFirstChild("Head") then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Character.Head.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, Target.Character.Head.Position), 0.1)
         end
     end
     
