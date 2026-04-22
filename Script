@@ -8,144 +8,61 @@ local Camera = workspace.CurrentCamera
 
 -- CONFIG GLOBALS
 getgenv().Aimbot = false
-getgenv().AimbotTeamCheck = false
 getgenv().ShowFOV = false
 getgenv().AimbotFOV = 150
-getgenv().FOVColor = Color3.fromRGB(255, 255, 255)
-getgenv().TargetPart = "Head" 
-getgenv().MaxDistance = 1000 
-getgenv().SpecificSCPTarget = "All"
-getgenv().SpecificTeamTarget = "All"
-getgenv().Fullbright = false
-getgenv().Noclip = false
+getgenv().FOVColor = Color3.fromRGB(0, 255, 255)
 getgenv().CustomSpeed = 16 
-
-local ESP_Config = {
-    Enabled = false,
-    ShowGuards = true,
-    ShowSCPs = true,
-    ShowClassD = true
-}
-
-local IsSwiping = false
+getgenv().Noclip = false
+getgenv().FlyEnabled = false
+getgenv().FlySpeed = 50
+getgenv().DoorBypass = false
+getgenv().ESPEnabled = false
 
 -- =========================
--- PERSISTENCE MODULE (Speed After Death)
+-- PERSISTENT SPEED
 -- =========================
-local function ApplySettings(character)
-    local humanoid = character:WaitForChild("Humanoid", 10)
-    if humanoid then
-        humanoid.WalkSpeed = getgenv().CustomSpeed
-    end
-end
-
-LocalPlayer.CharacterAdded:Connect(ApplySettings)
-
--- =========================
--- FOV CIRCLE VISUAL
--- =========================
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1.5
-FOVCircle.Transparency = 0.8
-FOVCircle.Filled = false 
-FOVCircle.Visible = false
-
--- =========================
--- SMART SWIPE DETECTION
--- =========================
-UserInputService.InputChanged:Connect(function(input)
-    if getgenv().Aimbot then
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Gamepad2 then
-            IsSwiping = true
-            task.delay(0.1, function() IsSwiping = false end)
-        end
-    end
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid", 10)
+    hum.WalkSpeed = getgenv().CustomSpeed
 end)
 
 -- =========================
--- TARGETING ENGINE
+-- FLIGHT & NOCLIP ENGINE
 -- =========================
-local function GetClosestTarget()
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
-    if IsSwiping then return nil end 
+local BodyGyro = Instance.new("BodyGyro")
+local BodyVelocity = Instance.new("BodyVelocity")
+BodyGyro.P = 9e4
+BodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
 
-    local Target = nil
-    local MaxDistFOV = getgenv().AimbotFOV
-    local MyPos = LocalPlayer.Character.HumanoidRootPart.Position
-
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
-            
-            -- Filter: Teams
-            if getgenv().SpecificTeamTarget ~= "All" and v.Team and v.Team.Name ~= getgenv().SpecificTeamTarget then continue end
-            
-            -- Filter: Specific SCPs
-            if v.Team and v.Team.Name == "SCP" and getgenv().SpecificSCPTarget ~= "All" then
-                if v.Character.Name ~= getgenv().SpecificSCPTarget then continue end
-            end
-
-            -- Filter: Friendly Fire
-            if getgenv().AimbotTeamCheck and v.Team == LocalPlayer.Team then continue end
-
-            local Part = v.Character:FindFirstChild(getgenv().TargetPart)
-            if Part then
-                local WorldDist = (Part.Position - MyPos).Magnitude
-                if WorldDist <= getgenv().MaxDistance then
-                    local Pos, OnScreen = Camera:WorldToViewportPoint(Part.Position)
-                    if OnScreen then
-                        local ScreenDist = (Vector2.new(Pos.X, Pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                        if ScreenDist < MaxDistFOV then
-                            Target = v
-                            MaxDistFOV = ScreenDist
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return Target
-end
-
--- =========================
--- MAIN RUNTIME LOOP
--- =========================
 RunService.RenderStepped:Connect(function()
-    -- FOV Visual Update
+    -- Flight Logic
+    if getgenv().FlyEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local HRP = LocalPlayer.Character.HumanoidRootPart
+        BodyGyro.Parent = HRP
+        BodyVelocity.Parent = HRP
+        BodyGyro.CFrame = Camera.CFrame
+        local Direction = Vector3.new(0,0,0)
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then Direction = Direction + Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then Direction = Direction - Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then Direction = Direction - Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then Direction = Direction + Camera.CFrame.RightVector end
+        BodyVelocity.Velocity = Direction * getgenv().FlySpeed
+    else
+        BodyGyro.Parent = nil
+        BodyVelocity.Parent = nil
+    end
+
+    -- FOV Visuals
     FOVCircle.Visible = getgenv().ShowFOV
     FOVCircle.Radius = getgenv().AimbotFOV
     FOVCircle.Color = getgenv().FOVColor
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 
-    -- Aimbot Execution
-    if getgenv().Aimbot then
-        local Target = GetClosestTarget()
-        if Target and Target.Character and Target.Character:FindFirstChild(getgenv().TargetPart) then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Character[getgenv().TargetPart].Position)
-        end
-    end
-
-    -- Fullbright
-    if getgenv().Fullbright then
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 14
-        Lighting.GlobalShadows = false
-    end
-
-    -- ESP Refresh
+    -- ESP Logic
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             local highlight = p.Character:FindFirstChild("ESP_Highlight")
-            local teamName = p.Team and p.Team.Name or "None"
-            
-            local shouldShow = false
-            if ESP_Config.Enabled then
-                if (teamName == "Guard" or teamName == "Security") and ESP_Config.ShowGuards then shouldShow = true
-                elseif teamName == "SCP" and ESP_Config.ShowSCPs then shouldShow = true
-                elseif (teamName == "Class-D" or teamName == "Prisoner") and ESP_Config.ShowClassD then shouldShow = true
-                end
-            end
-
-            if shouldShow then
+            if getgenv().ESPEnabled then
                 if not highlight then
                     highlight = Instance.new("Highlight", p.Character)
                     highlight.Name = "ESP_Highlight"
@@ -160,7 +77,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Noclip Execution
+-- Noclip Stepped
 RunService.Stepped:Connect(function()
     if getgenv().Noclip and LocalPlayer.Character then
         for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
@@ -170,71 +87,65 @@ RunService.Stepped:Connect(function()
 end)
 
 -- =========================
--- UI WINDOW SETUP
+-- UTILITIES: DOOR BYPASS
+-- =========================
+task.spawn(function()
+    while task.wait(0.5) do
+        if getgenv().DoorBypass then
+            for _, v in pairs(workspace:GetDescendants()) do
+                if (v.Name == "Door" or v.Name == "Gate") and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local Dist = (v:IsA("Model") and v.PrimaryPart and (v.PrimaryPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) or 100
+                    if Dist < 15 then
+                        local cd = v:FindFirstChildOfClass("ClickDetector")
+                        if cd then fireclickdetector(cd) end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- =========================
+-- UI WINDOW
 -- =========================
 local Window = Rayfield:CreateWindow({
-    Name = "Zenhub Ultra | Master Edition",
-    LoadingTitle = "Powering Up Premium Modules...",
-    ConfigurationSaving = { Enabled = false }
+    Name = "Zenhub Ultra | V9.0 Master",
+    LoadingTitle = "Assembling All Modules...",
 })
 
 -- COMBAT TAB
 local CombatTab = Window:CreateTab("Combat")
-CombatTab:CreateSection("Aimbot Core")
+CombatTab:CreateSection("— Aimbot —")
 CombatTab:CreateToggle({Name = "Enable Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
-CombatTab:CreateToggle({Name = "Team Check", CurrentValue = false, Callback = function(v) getgenv().AimbotTeamCheck = v end})
-
-CombatTab:CreateSection("FOV Customization")
 CombatTab:CreateToggle({Name = "Show FOV Circle", CurrentValue = false, Callback = function(v) getgenv().ShowFOV = v end})
 CombatTab:CreateSlider({Name = "FOV Size", Range = {30, 800}, Increment = 10, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
-CombatTab:CreateColorPicker({Name = "FOV Color", Color = Color3.fromRGB(255, 255, 255), Callback = function(v) getgenv().FOVColor = v end})
-
-CombatTab:CreateSection("Target Filtering")
-CombatTab:CreateDropdown({
-    Name = "Target Bone",
-    Options = {"Head", "HumanoidRootPart"},
-    CurrentOption = {"Head"},
-    Callback = function(Option) getgenv().TargetPart = Option[1] end,
-})
-CombatTab:CreateDropdown({
-    Name = "Target Specific Team",
-    Options = {"All", "Guard", "SCP", "Class-D", "Chaos Insurgency"},
-    CurrentOption = {"All"},
-    Callback = function(Option) getgenv().SpecificTeamTarget = Option[1] end,
-})
-CombatTab:CreateDropdown({
-    Name = "Target Specific SCP",
-    Options = {"All", "SCP-173", "SCP-096", "SCP-049", "SCP-106", "SCP-939", "SCP-035"},
-    CurrentOption = {"All"},
-    Callback = function(Option) getgenv().SpecificSCPTarget = Option[1] end,
-})
-
--- VISUALS TAB
-local VisualsTab = Window:CreateTab("Visuals")
-VisualsTab:CreateSection("ESP Settings")
-VisualsTab:CreateToggle({Name = "Master ESP Switch", CurrentValue = false, Callback = function(v) ESP_Config.Enabled = v end})
-VisualsTab:CreateToggle({Name = "Show Guards", CurrentValue = true, Callback = function(v) ESP_Config.ShowGuards = v end})
-VisualsTab:CreateToggle({Name = "Show SCPs", CurrentValue = true, Callback = function(v) ESP_Config.ShowSCPs = v end})
-VisualsTab:CreateToggle({Name = "Show Class-D", CurrentValue = true, Callback = function(v) ESP_Config.ShowClassD = v end})
-
-VisualsTab:CreateSection("World Tools")
-VisualsTab:CreateToggle({Name = "Fullbright", CurrentValue = false, Callback = function(v) getgenv().Fullbright = v end})
+CombatTab:CreateColorPicker({Name = "FOV Color", Color = Color3.fromRGB(0, 255, 255), Callback = function(v) getgenv().FOVColor = v end})
 
 -- MOVEMENT TAB
 local MovementTab = Window:CreateTab("Movement")
-MovementTab:CreateSection("Speed (Keeps after death)")
-MovementTab:CreateSlider({
-    Name = "WalkSpeed", 
-    Range = {16, 250}, 
-    Increment = 1, 
-    CurrentValue = 16, 
-    Callback = function(v)
-        getgenv().CustomSpeed = v
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = v
-        end
-    end
-})
+MovementTab:CreateSection("— Speed —")
+MovementTab:CreateSlider({Name = "WalkSpeed", Range = {16, 150}, Increment = 1, CurrentValue = 16, Callback = function(v)
+    getgenv().CustomSpeed = v
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = v end
+end})
 
-MovementTab:CreateSection("Physics")
-MovementTab:CreateToggle({Name = "Enable No-Clip", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
+MovementTab:CreateSection("— Flight —")
+MovementTab:CreateToggle({Name = "Flight Mode", CurrentValue = false, Callback = function(v) getgenv().FlyEnabled = v end})
+MovementTab:CreateSlider({Name = "Flight Speed", Range = {10, 300}, Increment = 5, CurrentValue = 50, Callback = function(v) getgenv().FlySpeed = v end})
+
+MovementTab:CreateSection("— Physics —")
+MovementTab:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
+
+-- VISUALS TAB
+local VisualsTab = Window:CreateTab("Visuals")
+VisualsTab:CreateToggle({Name = "Player ESP", CurrentValue = false, Callback = function(v) getgenv().ESPEnabled = v end})
+VisualsTab:CreateButton({Name = "Enable Fullbright", Callback = function()
+    Lighting.Brightness = 2
+    Lighting.ClockTime = 14
+    Lighting.GlobalShadows = false
+end})
+
+-- UTILITIES TAB
+local UtilityTab = Window:CreateTab("Utilities")
+UtilityTab:CreateToggle({Name = "Auto-Door Bypass", CurrentValue = false, Callback = function(v) getgenv().DoorBypass = v end})
+UtilityTab:CreateButton({Name = "Rejoin Server", Callback = function() game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId) end})
