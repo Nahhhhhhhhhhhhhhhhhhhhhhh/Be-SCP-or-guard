@@ -2,83 +2,205 @@ local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 -- CONFIG GLOBALS
 getgenv().Aimbot = false
+getgenv().AimbotTeamCheck = false
 getgenv().ShowFOV = false
 getgenv().AimbotFOV = 150
-getgenv().InfJump = false
+getgenv().FOVColor = Color3.fromRGB(255, 255, 255)
+getgenv().TargetPart = "Head" 
+getgenv().MaxDistance = 500 
+getgenv().SpecificSCPTarget = "All"
+getgenv().SpecificTeamTarget = "All"
+getgenv().Fullbright = false
+getgenv().Noclip = false
+getgenv().CustomSpeed = 16 -- Stores your speed for respawns
 
--- FOV CIRCLE
+local ESP_Config = {
+    Enabled = false,
+    ShowGuards = true,
+    ShowSCPs = true,
+    ShowClassD = true
+}
+
+local IsSwiping = false
+
+-- =========================
+-- SPEED PERSISTENCE LOGIC
+-- =========================
+local function ApplySpeed(character)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        humanoid.WalkSpeed = getgenv().CustomSpeed
+    end
+end
+
+-- Re-apply speed whenever the user respawns
+LocalPlayer.CharacterAdded:Connect(ApplySpeed)
+
+-- =========================
+-- FOV CIRCLE SYSTEM
+-- =========================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 1.5
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-FOVCircle.Filled = false
+FOVCircle.Transparency = 0.8
+FOVCircle.Filled = false 
 FOVCircle.Visible = false
 
--- INFINITE JUMP LOGIC
-UserInputService.JumpRequest:Connect(function()
-    if getgenv().InfJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+-- =========================
+-- INTEGRATED SWIPE DETECTION
+-- =========================
+UserInputService.InputChanged:Connect(function(input)
+    if getgenv().Aimbot then
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Gamepad2 then
+            IsSwiping = true
+            task.delay(0.1, function() IsSwiping = false end)
+        end
     end
 end)
 
--- RENDER LOOP
+-- =========================
+-- TARGETING ENGINE
+-- =========================
+local function GetClosestTarget()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    if IsSwiping then return nil end 
+
+    local Target = nil
+    local MaxDistFOV = getgenv().AimbotFOV
+    local MyPos = LocalPlayer.Character.HumanoidRootPart.Position
+
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
+            
+            if getgenv().SpecificTeamTarget ~= "All" and v.Team and v.Team.Name ~= getgenv().SpecificTeamTarget then continue end
+            if v.Team and v.Team.Name == "SCP" and getgenv().SpecificSCPTarget ~= "All" then
+                if v.Character.Name ~= getgenv().SpecificSCPTarget then continue end
+            end
+            if getgenv().AimbotTeamCheck and v.Team == LocalPlayer.Team then continue end
+
+            local Part = v.Character:FindFirstChild(getgenv().TargetPart)
+            if Part then
+                local WorldDist = (Part.Position - MyPos).Magnitude
+                if WorldDist <= getgenv().MaxDistance then
+                    local Pos, OnScreen = Camera:WorldToViewportPoint(Part.Position)
+                    if OnScreen then
+                        local ScreenDist = (Vector2.new(Pos.X, Pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+                        if ScreenDist < MaxDistFOV then
+                            Target = v
+                            MaxDistFOV = ScreenDist
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return Target
+end
+
+-- =========================
+-- MAIN RUNTIME
+-- =========================
 RunService.RenderStepped:Connect(function()
     FOVCircle.Visible = getgenv().ShowFOV
     FOVCircle.Radius = getgenv().AimbotFOV
+    FOVCircle.Color = getgenv().FOVColor
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 
     if getgenv().Aimbot then
-        -- (Aimbot targeting logic from previous versions remains active here)
+        local Target = GetClosestTarget()
+        if Target and Target.Character and Target.Character:FindFirstChild(getgenv().TargetPart) then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Character[getgenv().TargetPart].Position)
+        end
+    end
+
+    if getgenv().Fullbright then
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
+        Lighting.GlobalShadows = false
+    end
+
+    -- ESP Refresh
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local highlight = p.Character:FindFirstChild("ESP_Highlight")
+            local teamName = p.Team and p.Team.Name or "None"
+            
+            local shouldShow = false
+            if ESP_Config.Enabled then
+                if (teamName == "Guard" or teamName == "Security") and ESP_Config.ShowGuards then shouldShow = true
+                elseif teamName == "SCP" and ESP_Config.ShowSCPs then shouldShow = true
+                elseif (teamName == "Class-D" or teamName == "Prisoner") and ESP_Config.ShowClassD then shouldShow = true
+                end
+            end
+
+            if shouldShow then
+                if not highlight then
+                    highlight = Instance.new("Highlight", p.Character)
+                    highlight.Name = "ESP_Highlight"
+                    highlight.FillTransparency = 0.5
+                end
+                highlight.Enabled = true
+                highlight.FillColor = p.TeamColor.Color
+            elseif highlight then
+                highlight.Enabled = false
+            end
+        end
     end
 end)
 
+-- Noclip Logic
+RunService.Stepped:Connect(function()
+    if getgenv().Noclip and LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end
+    end
+end)
+
+-- =========================
 -- UI WINDOW
+-- =========================
 local Window = Rayfield:CreateWindow({
-    Name = "Zenhub Ultra | Jump & Combat",
-    LoadingTitle = "Loading Modules...",
+    Name = "Zenhub Ultra | Persistent Edition",
+    LoadingTitle = "Zenhub Loading...",
     ConfigurationSaving = { Enabled = false }
 })
 
+-- COMBAT TAB
+local CombatTab = Window:CreateTab("Combat")
+CombatTab:CreateSection("Aimbot Settings")
+CombatTab:CreateToggle({Name = "Enable Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
+
+CombatTab:CreateSection("FOV Customization")
+CombatTab:CreateToggle({Name = "Visualise FOV", CurrentValue = false, Callback = function(v) getgenv().ShowFOV = v end})
+CombatTab:CreateSlider({Name = "FOV Radius", Range = {30, 800}, Increment = 10, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
+CombatTab:CreateColorPicker({Name = "FOV Color", Color = Color3.fromRGB(255, 255, 255), Callback = function(v) getgenv().FOVColor = v end})
+
 -- MOVEMENT TAB
 local MovementTab = Window:CreateTab("Movement")
-
-MovementTab:CreateSection("Jumping Controls")
-
--- THE FORCE JUMP BUTTON
-MovementTab:CreateButton({
-    Name = "Force Jump",
-    Callback = function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-            LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
-        end
-    end,
-})
-
-MovementTab:CreateToggle({
-    Name = "Infinite Jump", 
-    CurrentValue = false, 
-    Callback = function(v) getgenv().InfJump = v end
-})
-
-MovementTab:CreateSection("Speed")
+MovementTab:CreateSection("Speed Settings")
 MovementTab:CreateSlider({
     Name = "WalkSpeed", 
-    Range = {16, 200}, 
+    Range = {16, 250}, 
     Increment = 1, 
     CurrentValue = 16, 
     Callback = function(v)
+        getgenv().CustomSpeed = v -- Save the speed to global
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
             LocalPlayer.Character.Humanoid.WalkSpeed = v
         end
     end
 })
 
--- COMBAT TAB (Quick Access)
-local CombatTab = Window:CreateTab("Combat")
-CombatTab:CreateToggle({Name = "Enable Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
-CombatTab:CreateToggle({Name = "Show FOV", CurrentValue = false, Callback = function(v) getgenv().ShowFOV = v end})
-CombatTab:CreateSlider({Name = "FOV Radius", Range = {30, 800}, Increment = 10, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
+MovementTab:CreateSection("Misc")
+MovementTab:CreateToggle({Name = "No-Clip", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
+
+-- VISUALS TAB
+local VisualsTab = Window:CreateTab("Visuals")
+VisualsTab:CreateToggle({Name = "Master ESP Switch", CurrentValue = false, Callback = function(v) ESP_Config.Enabled = v end})
+VisualsTab:CreateToggle({Name = "Fullbright", CurrentValue = false, Callback = function(v) getgenv().Fullbright = v end})
