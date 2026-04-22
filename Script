@@ -1,0 +1,164 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Zenos| Be SCP Or Guard Hub",
+   LoadingTitle = "Be Scp Or Guard Access...",
+   LoadingSubtitle = "by Zeno",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "SCP_Guard_Config",
+      FileName = "Main"
+   }
+})
+
+-- Variables & Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+
+getgenv().Aimbot = false
+getgenv().SilentAim = false
+getgenv().AimbotFOV = 150
+getgenv().ShowFOV = false
+
+local ESP_Config = {
+    Enabled = false,
+    ShowNames = false,
+    NameScale = 14,
+    HighlightTransparency = 0.5
+}
+
+-- FOV Circle for Aimbot
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.7
+
+-- Utility: Get Closest Player
+local function GetClosestToMouse()
+    local Target = nil
+    local MaxDist = getgenv().AimbotFOV
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+            local Pos, OnScreen = Camera:WorldToViewportPoint(v.Character.HumanoidRootPart.Position)
+            if OnScreen then
+                local Dist = (Vector2.new(Pos.X, Pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+                if Dist < MaxDist then
+                    Target = v
+                    MaxDist = Dist
+                end
+            end
+        end
+    end
+    return Target
+end
+
+-- ESP Logic
+local function ApplyESP(player)
+    if player == LocalPlayer then return end
+    local function setupESPOnChar(char)
+        if not char then return end
+        local head = char:WaitForChild("Head", 5)
+        if not head then return end
+
+        if char:FindFirstChild("ESPHighlight") then char.ESPHighlight:Destroy() end
+        if head:FindFirstChild("ESPNameTag") then head.ESPNameTag:Destroy() end
+
+        if ESP_Config.Enabled then
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "ESPHighlight"
+            highlight.Parent = char
+            highlight.FillTransparency = ESP_Config.HighlightTransparency
+            if player.Team then highlight.FillColor = player.TeamColor.Color end
+
+            if ESP_Config.ShowNames then
+                local bgui = Instance.new("BillboardGui", head)
+                bgui.Name = "ESPNameTag"
+                bgui.Size = UDim2.new(0, 100, 0, 50)
+                bgui.StudsOffset = Vector3.new(0, 2.5, 0)
+                bgui.AlwaysOnTop = true
+
+                local label = Instance.new("TextLabel", bgui)
+                label.BackgroundTransparency = 1
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.Text = player.DisplayName or player.Name
+                label.TextColor3 = Color3.new(1, 1, 1)
+                label.TextStrokeTransparency = 0
+                label.Font = Enum.Font.SourceSansBold
+                label.TextSize = ESP_Config.NameScale
+            end
+        end
+    end
+    player.CharacterAdded:Connect(setupESPOnChar)
+    if player.Character then setupESPOnChar(player.Character) end
+end
+
+local function RefreshCurrentESP()
+    for _, p in pairs(Players:GetPlayers()) do ApplyESP(p) end
+end
+
+-- Metatable Hook for Silent Aim
+local mt = getrawmetatable(game)
+local old = mt.__index
+setreadonly(mt, false)
+mt.__index = newcclosure(function(t, k)
+    if k == "Hit" and getgenv().SilentAim then
+        local Target = GetClosestToMouse()
+        if Target then return Target.Character.HumanoidRootPart.CFrame end
+    end
+    return old(t, k)
+end)
+setreadonly(mt, true)
+
+-- Main Loops (Aimbot & NoClip)
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Visible = getgenv().ShowFOV
+    FOVCircle.Radius = getgenv().AimbotFOV
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+    if getgenv().Aimbot then
+        local Target = GetClosestToMouse()
+        if Target and Target.Character and Target.Character:FindFirstChild("Head") then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Character.Head.Position)
+        end
+    end
+    
+    if getgenv().Noclip and LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end
+    end
+end)
+
+-- TABS --
+
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+CombatTab:CreateToggle({Name = "Hard Aimbot (Lock)", CurrentValue = false, Flag = "Aim", Callback = function(v) getgenv().Aimbot = v end})
+CombatTab:CreateToggle({Name = "Silent Aim (Invisible)", CurrentValue = false, Flag = "SAim", Callback = function(v) getgenv().SilentAim = v end})
+CombatTab:CreateToggle({Name = "Show FOV Circle", CurrentValue = false, Flag = "SFOV", Callback = function(v) getgenv().ShowFOV = v end})
+CombatTab:CreateSlider({Name = "FOV Radius", Range = {50, 800}, Increment = 10, CurrentValue = 150, Flag = "FOVR", Callback = function(v) getgenv().AimbotFOV = v end})
+
+local VisualsTab = Window:CreateTab("Visuals", 4483362458)
+VisualsTab:CreateToggle({Name = "Enable ESP", CurrentValue = false, Flag = "EESP", Callback = function(v) ESP_Config.Enabled = v RefreshCurrentESP() end})
+VisualsTab:CreateToggle({Name = "Show Names", CurrentValue = false, Flag = "EName", Callback = function(v) ESP_Config.ShowNames = v RefreshCurrentESP() end})
+VisualsTab:CreateSlider({Name = "Name Size", Range = {8, 32}, Increment = 1, CurrentValue = 14, Flag = "NSize", Callback = function(v) 
+    ESP_Config.NameScale = v
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character and p.Character:FindFirstChild("Head") then
+            local tag = p.Character.Head:FindFirstChild("ESPNameTag")
+            if tag then tag.TextLabel.TextSize = v end
+        end
+    end
+end})
+
+local MovementTab = Window:CreateTab("Movement", 4483362458)
+MovementTab:CreateSlider({Name = "WalkSpeed", Range = {16, 250}, Increment = 1, CurrentValue = 16, Flag = "WS", Callback = function(v) LocalPlayer.Character.Humanoid.WalkSpeed = v end})
+MovementTab:CreateSlider({Name = "JumpPower", Range = {50, 500}, Increment = 1, CurrentValue = 50, Flag = "JP", Callback = function(v) LocalPlayer.Character.Humanoid.JumpPower = v end})
+MovementTab:CreateToggle({Name = "No-Clip", CurrentValue = false, Flag = "NC", Callback = function(v) getgenv().Noclip = v end})
+
+-- Init
+for _, p in pairs(Players:GetPlayers()) do ApplyESP(p) end
+Players.PlayerAdded:Connect(ApplyESP)
+Rayfield:LoadConfiguration()
