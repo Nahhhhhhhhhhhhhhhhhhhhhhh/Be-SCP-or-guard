@@ -13,8 +13,7 @@ getgenv().AimbotFOV = 150
 getgenv().FOVColor = Color3.fromRGB(0, 255, 255)
 getgenv().TargetPart = "Head"
 getgenv().TargetFilter = "All"
-getgenv().AimbotSmoothing = 1
-getgenv().MaxAimDistance = 1000 -- NEW: Range Control
+getgenv().MaxAimDistance = 1000
 
 getgenv().CustomSpeed = 16 
 getgenv().Noclip = false
@@ -24,29 +23,58 @@ getgenv().FlySpeed = 50
 getgenv().DoorBypass = false
 getgenv().ESPEnabled = false
 getgenv().ESPFilter = "All"
-getgenv().ESPMode = "Highlights"
 
--- [[ AIMBOT ENGINE: RANGE-SENSITIVE ]]
+-- [[ FLIGHT & NOCLIP CORE ]]
+RunService.Stepped:Connect(function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local HRP = LocalPlayer.Character.HumanoidRootPart
+        local Hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+
+        -- Noclip Physics Overwrite
+        if getgenv().Noclip or getgenv().FlyEnabled then
+            for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = false end
+            end
+        end
+
+        -- Active Flight Logic
+        if getgenv().FlyEnabled then
+            Hum.PlatformStand = true -- Prevents walking animations from breaking flight
+            local Direction = Vector3.new(0, 0, 0)
+
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then Direction = Direction + Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then Direction = Direction - Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then Direction = Direction - Camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then Direction = Direction + Camera.CFrame.RightVector end
+
+            HRP.Velocity = Direction * getgenv().FlySpeed
+            -- Keep character upright while flying
+            HRP.CFrame = CFrame.new(HRP.Position, HRP.Position + Camera.CFrame.LookVector)
+        else
+            if Hum.PlatformStand then Hum.PlatformStand = false end
+        end
+    end
+end)
+
+-- [[ AIMBOT & VISUALS ]]
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.Filled = false
+
 local function GetClosestPlayer()
     local Target = nil
     local ShortestDistance = getgenv().AimbotFOV
     local MyRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    
     if not MyRoot then return nil end
 
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(getgenv().TargetPart) then
-            -- Team Filter
             local pTeam = v.Team and v.Team.Name or "None"
             if getgenv().TargetFilter ~= "All" and pTeam ~= getgenv().TargetFilter then continue end
             
             local Part = v.Character[getgenv().TargetPart]
-            
-            -- Range Check
-            local WorldDist = (Part.Position - MyRoot.Position).Magnitude
-            if WorldDist > getgenv().MaxAimDistance then continue end
+            if (Part.Position - MyRoot.Position).Magnitude > getgenv().MaxAimDistance then continue end
 
-            -- FOV Check
             local Pos, OnScreen = Camera:WorldToViewportPoint(Part.Position)
             if OnScreen then
                 local ScreenDist = (Vector2.new(Pos.X, Pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
@@ -60,16 +88,11 @@ local function GetClosestPlayer()
     return Target
 end
 
--- [[ CORE RUNTIME LOOPS ]]
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 2
-FOVCircle.Filled = false
-
 RunService.RenderStepped:Connect(function()
     if getgenv().Aimbot then
         local Target = GetClosestPlayer()
         if Target then
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, Target.Position), 1 / getgenv().AimbotSmoothing)
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, Target.Position), 0.5)
         end
     end
     FOVCircle.Visible = getgenv().ShowFOV
@@ -80,82 +103,50 @@ end)
 
 -- [[ UI INITIALIZATION ]]
 local Window = Rayfield:CreateWindow({
-    Name = "Zenhub Ultra | V1",
-    LoadingTitle = "Syncing Tactical Distance Modules...",
+    Name = "Zenhub Ultra | V1 Be An Scp Or Guard",
+    LoadingTitle = "Site Bypassed...",
 })
 
--- == COMBAT TAB ==
+-- == COMBAT ==
 local CombatTab = Window:CreateTab("Combat")
-CombatTab:CreateSection("— Aimbot Constraints —")
+CombatTab:CreateSection("— Aimbot —")
 CombatTab:CreateToggle({Name = "Enable Aimbot", CurrentValue = false, Callback = function(v) getgenv().Aimbot = v end})
-CombatTab:CreateSlider({
-    Name = "Max Activation Distance", 
-    Range = {50, 5000}, 
-    Increment = 50, 
-    CurrentValue = 1000, 
-    Info = "Distance in studs before Aimbot stops locking on.",
-    Callback = function(v) getgenv().MaxAimDistance = v end
-})
+CombatTab:CreateSlider({Name = "Max Lock Distance", Range = {50, 5000}, Increment = 50, CurrentValue = 1000, Callback = function(v) getgenv().MaxAimDistance = v end})
+CombatTab:CreateDropdown({Name = "Target Team", Options = {"All", "Guard", "SCP", "Class-D"}, CurrentOption = {"All"}, Callback = function(v) getgenv().TargetFilter = v[1] end})
 
-CombatTab:CreateSection("— Targeting Filters —")
-CombatTab:CreateDropdown({
-    Name = "Target Team Filter",
-    Options = {"All", "Guard", "SCP", "Class-D"},
-    CurrentOption = {"All"},
-    Callback = function(v) getgenv().TargetFilter = v[1] end
-})
-CombatTab:CreateDropdown({
-    Name = "Priority Bone",
-    Options = {"Head", "HumanoidRootPart"},
-    CurrentOption = {"Head"},
-    Callback = function(v) getgenv().TargetPart = v[1] end
-})
+CombatTab:CreateSection("— Visual FOV —")
+CombatTab:CreateToggle({Name = "Show FOV", CurrentValue = false, Callback = function(v) getgenv().ShowFOV = v end})
+CombatTab:CreateSlider({Name = "FOV Size", Range = {30, 800}, Increment = 5, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
+CombatTab:CreateColorPicker({Name = "FOV Circle Color", Color = Color3.fromRGB(0, 255, 255), Callback = function(v) getgenv().FOVColor = v end})
 
-CombatTab:CreateSection("— Visual Feedback —")
-CombatTab:CreateToggle({Name = "Show FOV Circle", CurrentValue = false, Callback = function(v) getgenv().ShowFOV = v end})
-CombatTab:CreateSlider({Name = "FOV Radius", Range = {30, 800}, Increment = 5, CurrentValue = 150, Callback = function(v) getgenv().AimbotFOV = v end})
-
--- == MOVEMENT TAB ==
+-- == MOVEMENT ==
 local MovementTab = Window:CreateTab("Movement")
-MovementTab:CreateSection("— Air & Wall Physics —")
-MovementTab:CreateToggle({Name = "Fly Enabled", CurrentValue = false, Callback = function(v) getgenv().FlyEnabled = v end})
-MovementTab:CreateToggle({Name = "Noclip Active", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
+MovementTab:CreateSection("— Ghost Movement —")
+MovementTab:CreateToggle({Name = "Toggle Flight", CurrentValue = false, Callback = function(v) getgenv().FlyEnabled = v end})
+MovementTab:CreateToggle({Name = "Wall Noclip", CurrentValue = false, Callback = function(v) getgenv().Noclip = v end})
 MovementTab:CreateSlider({Name = "Fly Speed", Range = {10, 300}, Increment = 5, CurrentValue = 50, Callback = function(v) getgenv().FlySpeed = v end})
 
-MovementTab:CreateSection("— Ground Locomotion —")
+MovementTab:CreateSection("— Land Speed —")
 MovementTab:CreateSlider({Name = "WalkSpeed", Range = {16, 200}, Increment = 1, CurrentValue = 16, Callback = function(v)
     getgenv().CustomSpeed = v
     if LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = v end
 end})
 
--- == VISUALS TAB ==
+-- == VISUALS ==
 local VisualsTab = Window:CreateTab("Visuals")
-VisualsTab:CreateSection("— Entity ESP —")
-VisualsTab:CreateToggle({Name = "Enable ESP", CurrentValue = false, Callback = function(v) getgenv().ESPEnabled = v end})
-VisualsTab:CreateDropdown({
-    Name = "ESP Team Filter",
-    Options = {"All", "Guard", "SCP", "Class-D"},
-    CurrentOption = {"All"},
-    Callback = function(v) getgenv().ESPFilter = v[1] end
-})
+VisualsTab:CreateSection("— ESP Systems —")
+VisualsTab:CreateToggle({Name = "Enable Player ESP", CurrentValue = false, Callback = function(v) getgenv().ESPEnabled = v end})
+VisualsTab:CreateDropdown({Name = "ESP Team Filter", Options = {"All", "Guard", "SCP", "Class-D"}, CurrentOption = {"All"}, Callback = function(v) getgenv().ESPFilter = v[1] end})
+VisualsTab:CreateButton({Name = "Enable Fullbright", Callback = function() Lighting.Brightness = 2; Lighting.ClockTime = 14; Lighting.GlobalShadows = false end})
 
-VisualsTab:CreateSection("— World Lighting —")
-VisualsTab:CreateButton({Name = "Fullbright", Callback = function()
-    Lighting.Brightness = 2; Lighting.ClockTime = 14; Lighting.GlobalShadows = false
-end})
-
--- == UTILITIES TAB ==
+-- == UTILITIES ==
 local UtilityTab = Window:CreateTab("Utilities")
-UtilityTab:CreateSection("— Access Control —")
 UtilityTab:CreateToggle({Name = "Auto-Button Bypass", CurrentValue = false, Callback = function(v) getgenv().DoorBypass = v end})
-UtilityTab:CreateButton({Name = "Rejoin Server", Callback = function() 
-    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId) 
-end})
 
--- [[ BACKGROUND TASKS ]]
+-- [[ PERSISTENT BACKGROUND TASKS ]]
 task.spawn(function()
     while task.wait(0.2) do
-        -- ESP Logic
+        -- ESP Loop
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
                 local hl = p.Character:FindFirstChild("Zenhub_Highlight")
@@ -167,7 +158,7 @@ task.spawn(function()
                 elseif hl then hl.Enabled = false end
             end
         end
-        -- Auto-Door Bypass
+        -- Interaction Bypass
         if getgenv().DoorBypass and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             for _, v in pairs(workspace:GetDescendants()) do
                 if v:IsA("ClickDetector") and (v.Parent.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude < 15 then
